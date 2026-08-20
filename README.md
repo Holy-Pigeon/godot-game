@@ -29,7 +29,7 @@
 | [08 UGC 与 AI 主持人](docs/08-ugc-and-ai-host.md) | LLM 只主持不裁判、AI 编号、创作者经济 |
 | [09 技术架构](docs/09-architecture.md) | 服务器权威、确定性引擎、目录结构 |
 | [10 开发路线图](docs/10-roadmap.md) | M0 垂直切片到 M4 生态 |
-| [11 待决问题与风险](docs/11-open-questions.md) | 28 条待决问题 + 16 条风险台账 |
+| [11 待决问题与风险](docs/11-open-questions.md) | 43 条待决问题 + 16 条风险台账 |
 
 **第一次读**：`00` → `01` → `04`。
 
