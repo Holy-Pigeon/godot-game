@@ -10,6 +10,7 @@
 |---|---|
 | 了解游戏 | [00](00-overview.md) → [01](01-core-loop.md) → [11](11-mvp-echoes.md) |
 | 设计回响 | [04](04-echo.md) → [07](07-level-design.md) → [10](10-gm-and-validation.md) |
+| 运行 T-11 MVP | [12 最后提案](12-t11-last-proposal.md) → [11 MVP 回响](11-mvp-echoes.md) |
 | 设计关卡 | [03](03-mandate.md) → [07](07-level-design.md) → [08](08-host-and-ugc.md) |
 | 设计经济 | [02](02-economy-lifespan-memory.md) → [09](09-open-questions.md) |
 | 讨论未知项 | [06](06-death-and-recurrence.md) → [09](09-open-questions.md) |

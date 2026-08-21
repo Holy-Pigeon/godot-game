@@ -18,5 +18,6 @@
 | 未决项 | [09 问题台账](docs/09-open-questions.md) |
 | GM 验证 | [10 GM](docs/10-gm-and-validation.md) |
 | 首个可制作范围 | [11 MVP](docs/11-mvp-echoes.md) |
+| T-11 完整关卡规则 | [12 最后提案](docs/12-t11-last-proposal.md) |
 
 > 本仓库当前只讨论游戏设计；未决事项只在 `09` 讨论，其他文档只记录已锁定规则。
