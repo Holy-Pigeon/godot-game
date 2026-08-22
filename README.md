@@ -19,5 +19,7 @@
 | GM 验证 | [10 GM](docs/10-gm-and-validation.md) |
 | 首个可制作范围 | [11 MVP](docs/11-mvp-echoes.md) |
 | T-11 完整关卡规则 | [12 最后提案](docs/12-t11-last-proposal.md) |
+| 对局记录与性格推断 | [13 记录与推断](docs/13-record-and-inference.md) |
+| 碎片、找回度与渴望值 | [14 碎片与渴望](docs/14-fragments-and-yearning.md) |
 
 > 本仓库当前只讨论游戏设计；未决事项只在 `09` 讨论，其他文档只记录已锁定规则。
