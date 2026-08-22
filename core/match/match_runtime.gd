@@ -9,11 +9,13 @@ const SeatStateCls := preload("res://core/match/seat_state.gd")
 const EventLogCls := preload("res://core/match/event_log.gd")
 const RngCls := preload("res://core/match/deterministic_rng.gd")
 const ValidationResultCls := preload("res://core/match/validation_result.gd")
+const FactProviderCls := preload("res://core/template/fact_provider.gd")
 
 const PUMP_GUARD := 4096
 
 var state: MatchState
 var log: EventLog
+var facts: FactProvider
 var template: RefCounted
 var rng: DeterministicRng
 var seed_value: int = 0
@@ -27,6 +29,7 @@ func _init(p_template: RefCounted, p_seats: Array, p_seed: int) -> void:
 	seed_value = p_seed
 	rng = RngCls.new(p_seed)
 	log = EventLogCls.new()
+	facts = FactProviderCls.new(log)
 	state = MatchStateCls.new()
 	var typed: Array[SeatState] = []
 	for s in p_seats:
@@ -45,7 +48,7 @@ func rejections() -> int:
 
 func start() -> void:
 	assert(not state.started, "match already started")
-	for e in template.begin(state, rng):
+	for e in template.begin(state, rng, facts):
 		_commit(e)
 	_pump()
 
@@ -58,7 +61,7 @@ func submit(cmd) -> ValidationResult:
 	if not res.ok:
 		_rejections += 1
 		return res
-	for e in template.emit(state, cmd, rng):
+	for e in template.emit(state, cmd, rng, facts):
 		e.gm_origin = cmd.gm_origin
 		_commit(e)
 	_pump()
@@ -89,7 +92,7 @@ func _commit(e) -> void:
 func _pump() -> void:
 	var guard := 0
 	while not state.ended:
-		var events: Array = template.advance(state, rng)
+		var events: Array = template.advance(state, rng, facts)
 		if events.is_empty():
 			return
 		for e in events:

@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 ## godot --headless --path <project> -s res://tests/run_all.gd
 ## 不引入外部测试框架依赖。
@@ -26,6 +26,8 @@ func _initialize() -> void:
 	_test_single_stream_replay()
 	_test_invariants()
 	_test_dummy_template()
+	_test_mandates()
+	_test_high_risk()
 	_test_compatibility()
 	_batch_simulation()
 	print("\n=== %d 项断言，%d 项失败 ===" % [_checks, _failures])
@@ -143,9 +145,18 @@ func _verify_invariants(rt, cfg) -> String:
 	var round_no := 0
 	var seen_rounds: Array = []
 
+	# 失守者之后不能行动、持有灾痕、投票或获奖（docs/12）。
+	# 判定结果入档不算「行动」——记录与发放是两回事。
+	var forbidden_after_death: Array[StringName] = [
+		&"DisasterClaimed", &"TransferRequested", &"TransferResponded", &"TurnPassed",
+		&"PromiseApprove", &"TalkReady", &"VoteLocked", &"LossSettled", &"FinalAward",
+		&"PerfectRefund", &"LampLit",
+	]
 	for e in rt.log.rule_events():
-		if eliminated.has(e.actor) and e.actor != -1:
+		if e.actor != -1 and eliminated.has(e.actor) and forbidden_after_death.has(e.type):
 			return "失守者 %d 在 seq %d 仍产生事件 %s" % [e.actor, e.seq, e.type]
+		if e.type == &"MandateResolved" and eliminated.has(e.actor) and e.payload["reward"] > 0:
+			return "失守者 %d 仍获得密令奖 %d" % [e.actor, e.payload["reward"]]
 		match e.type:
 			&"MatchStarted":
 				var ids: Array = e.payload["seats"]
@@ -238,6 +249,98 @@ func _test_dummy_template() -> void:
 
 # ————————————————————————————————— 兼容矩阵 —————————————————————————————————
 
+func _test_mandates() -> void:
+	_section("密令：发牌约束、证据引用与失守不获奖")
+	var r := Harness.run_t11(31337)
+	if not _check(r["play"]["ok"], "对局跑通"):
+		return
+	var rt = r["rt"]
+
+	var dealt: Array = rt.log.of_type(&"MandateDealt")
+	_check(dealt.size() == 6, "六人各一条密令", "dealt=%d" % dealt.size())
+	var ids := {}
+	var by_diff := {"low": 0, "mid": 0, "high": 0}
+	var pool_index = preload("res://core/mandate/mandate_dealer.gd").index(
+		preload("res://templates/t11/data/t11_mandates.gd").pool())
+	for e in dealt:
+		ids[e.payload["mandate_id"]] = true
+		by_diff[String(pool_index[e.payload["mandate_id"]].difficulty)] += 1
+		_check(e.visibility == 1, "密令只对本人可见")
+		if pool_index[e.payload["mandate_id"]].needs_target:
+			_check(e.payload["target"] != e.actor, "指向 X 的密令不指向自己")
+			_check(e.payload["target"] != -1, "指向 X 的密令有目标")
+	_check(ids.size() == 6, "无完全重复的密令", "distinct=%d" % ids.size())
+	_check(by_diff["low"] == 2 and by_diff["mid"] == 2 and by_diff["high"] == 2,
+		"固定两低两中两高", str(by_diff))
+
+	var resolved: Array = rt.log.of_type(&"MandateResolved")
+	_check(resolved.size() == 6, "每条密令都被求值")
+	for e in resolved:
+		if e.payload["success"]:
+			_check(not (e.payload["evidence"] as Array).is_empty(),
+				"%s 成功判定必须引用事件序号" % e.payload["mandate_id"])
+
+	# 密令求值只读规则事件流：换一份只含规则事件的 FactProvider 重算，结论必须一致
+	var facts = preload("res://core/template/fact_provider.gd").new(rt.log.rule_events())
+	var assignments: Array = []
+	for e in dealt:
+		assignments.append({"seat": e.actor, "mandate_id": e.payload["mandate_id"],
+			"target": e.payload["target"]})
+	var redone = preload("res://core/mandate/mandate_evaluator.gd").resolve(
+		facts, assignments, pool_index,
+		preload("res://templates/t11/bindings/mandate_checks.gd").new())
+	var same := true
+	for x in redone:
+		for e in resolved:
+			if e.actor == x["seat"]:
+				same = same and (e.payload["success"] == x["success"])
+	_check(same, "密令判定可从规则事件流独立复算")
+
+
+## 200 局常规模拟里提前结束 0 局，END_EARLY 分支等于没被测过。
+## 用高危余命把失守与提前结束逼出来。
+func _test_high_risk() -> void:
+	_section("高危局：失守、提前结束与门环留档")
+	var early := 0
+	var deaths := 0
+	var completed_with_death := 0
+	var bad := 0
+	# 余命档从 6 扫到 15：太低则全员提前结束，太高则谁也不死，
+	# 「打完六轮但有人失守」这条中间路径只在中段出现。
+	for i in range(120):
+		var r := Harness.run_t11(777000 + i * 13, 6, 6 + (i % 10))
+		if not r["play"]["ok"]:
+			bad += 1
+			continue
+		var msg := _verify_invariants(r["rt"], r["config"])
+		if msg != "":
+			bad += 1
+			printerr("  seed %d: %s" % [777000 + i * 13, msg])
+			continue
+		var rt = r["rt"]
+		deaths += rt.log.of_type(&"PlayerEliminated").size()
+		var ended = rt.log.last_of_type(&"MatchEnded")
+		var pe = rt.log.last_of_type(&"PerfectEval")
+		if ended.payload["end_reason"] == "EARLY_TWO_LEFT":
+			early += 1
+		elif not pe.payload["executed"]:
+			completed_with_death += 1
+		# 三条终局路径都必须留档，且都必须记录 K
+		if rt.log.last_of_type(&"RingSnapshot") == null:
+			bad += 1
+			printerr("  seed %d: 终局未留档门环" % (777000 + i * 13))
+		if not pe.payload.has("k"):
+			bad += 1
+			printerr("  seed %d: 终局未记录 K" % (777000 + i * 13))
+	_check(bad == 0, "120 局高危对局全部满足不变量", "违规 %d 局" % bad)
+	_check(deaths > 0, "确实出现规则致死", "deaths=%d" % deaths)
+	_check(early > 0, "END_EARLY 分支被真实执行", "early=%d" % early)
+	_check(completed_with_death > 0, "「打完六轮但有人失守」路径被真实执行",
+		"n=%d" % completed_with_death)
+	print("  失守 %d 人次 · 提前结束 %d 局 · 打完六轮但有人失守 %d 局" % [
+		deaths, early, completed_with_death])
+
+
 func _test_compatibility() -> void:
 	_section("回响 × 模板兼容矩阵")
 	var echoes := [
@@ -270,6 +373,9 @@ func _batch_simulation() -> void:
 	var k_dist := {}
 	var rounds_total := 0
 	var failed := 0
+	var mandate_hits := 0
+	var mandate_total := 0
+	var per_mandate := {}
 
 	for i in range(n):
 		var r := Harness.run_t11(100000 + i * 31)
@@ -287,6 +393,17 @@ func _batch_simulation() -> void:
 					loss += e.payload["actual"]
 				&"FinalAward", &"PerfectRefund":
 					awards += e.payload["amount"]
+				&"MandateResolved":
+					awards += e.payload["reward"]
+					var mid: String = e.payload["mandate_id"]
+					if not per_mandate.has(mid):
+						per_mandate[mid] = {"hit": 0, "n": 0,
+							"coop": e.payload["requires_cooperation"]}
+					per_mandate[mid]["n"] = per_mandate[mid]["n"] + 1
+					mandate_total += 1
+					if e.payload["success"]:
+						mandate_hits += 1
+						per_mandate[mid]["hit"] = per_mandate[mid]["hit"] + 1
 				&"PlayerEliminated":
 					deaths += 1
 		net_total += tickets + loss - awards
@@ -307,7 +424,9 @@ func _batch_simulation() -> void:
 	_check(failed == 0, "200 局全部跑通", "失败 %d 局" % failed)
 	if done == 0:
 		return
-	print("  平均系统净回收   %.1f 日/局（未含密令奖，密令属 M2）" % (float(net_total) / done))
+	print("  平均系统净回收   %.1f 日/局" % (float(net_total) / done))
+	print("  密令完成率       %.1f%%（%d/%d）" % [
+		100.0 * mandate_hits / maxi(1, mandate_total), mandate_hits, mandate_total])
 	print("  平均否决次数     %.2f" % (float(vetoes) / done))
 	print("  平均完成轮次     %.2f" % (float(rounds_total) / done))
 	print("  规则致死         %d 人次（%.2f 人/局）" % [deaths, float(deaths) / done])
@@ -319,3 +438,12 @@ func _batch_simulation() -> void:
 	for k in keys:
 		parts.append("K=%d:%d" % [k, k_dist[k]])
 	print("  共同决策轮分布   " + "  ".join(parts))
+	# 按密令 id 分别统计：依赖他人的密令若系统性失败，会藏在平均值里
+	var mids := per_mandate.keys()
+	mids.sort()
+	var lines := PackedStringArray()
+	for m in mids:
+		var rec: Dictionary = per_mandate[m]
+		lines.append("%s %s%.0f%%" % [m, "*" if rec["coop"] else " ",
+			100.0 * rec["hit"] / maxi(1, rec["n"])])
+	print("  各密令完成率     " + "  ".join(lines) + "   （* = 需他人配合）")

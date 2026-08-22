@@ -1,4 +1,4 @@
-﻿class_name T11Template
+class_name T11Template
 extends "res://core/template/level_template.gd"
 
 ## T-11「最后提案」。规则真源：docs/12-t11-last-proposal.md
@@ -12,6 +12,10 @@ const T11ConfigCls := preload("res://templates/t11/t11_config.gd")
 const Secret := preload("res://templates/t11/t11_secret.gd")
 const Anchors := preload("res://core/echo/anchor_registry.gd")
 const Vocab := preload("res://core/echo/predicate_vocabulary.gd")
+const Mandates := preload("res://templates/t11/data/t11_mandates.gd")
+const MandateChecks := preload("res://templates/t11/bindings/mandate_checks.gd")
+const Dealer := preload("res://core/mandate/mandate_dealer.gd")
+const Evaluator := preload("res://core/mandate/mandate_evaluator.gd")
 
 # —— 阶段 ——
 const PH_NONE := 0
@@ -85,18 +89,24 @@ func initial_state(seats: Array) -> RefCounted:
 	return t
 
 
-func begin(state, _rng) -> Array:
+func begin(state, rng, _facts = null) -> Array:
 	var lifespans: Array = []
 	var ids: Array = []
 	for s in state.seats:
 		ids.append(s.id)
 		lifespans.append(s.lifespan)
-	return [Ev.make(&"MatchStarted", Ev.NO_ACTOR, {
+	var out: Array = [Ev.make(&"MatchStarted", Ev.NO_ACTOR, {
 		"template": String(id()),
 		"seats": ids,
 		"lifespans": lifespans,
 		"ticket": config.ticket,
 	})]
+	# 抽取结果先写成事件，重放不重新 roll；密令只对本人可见
+	for a in Dealer.deal(Mandates.pool(), ids, rng):
+		out.append(Ev.make(&"MandateDealt", a["seat"], {
+			"mandate_id": a["mandate_id"], "target": a["target"],
+		}, Ev.VIS_ACTOR))
+	return out
 
 
 # ————————————————————————————————— 校验 —————————————————————————————————
@@ -167,7 +177,7 @@ func validate(state, cmd) -> ValidationResult:
 
 # ————————————————————————————————— 产出事实 —————————————————————————————————
 
-func emit(state, cmd, _rng) -> Array:
+func emit(state, cmd, _rng, _facts = null) -> Array:
 	var t = state.tpl
 	match cmd.type:
 		C_PASS:
@@ -238,6 +248,10 @@ func reduce(state, e) -> void:
 	match e.type:
 		&"MatchStarted":
 			state.started = true
+		&"MandateDealt":
+			t.mandates[e.actor] = {
+				"mandate_id": e.payload["mandate_id"], "target": e.payload["target"],
+			}
 		&"RoundStarted":
 			state.round = e.payload["round"]
 			t.vetoes_this_round = 0
@@ -318,10 +332,17 @@ func reduce(state, e) -> void:
 			t.joint_rounds = e.payload["k"]
 		&"RingAdvanced":
 			t.ring = e.payload["ring"]
+		&"FinalSettleStarted":
+			t.pending_end_reason = StringName(e.payload["end_reason"])
+			state.phase = PH_FINAL
 		&"FinalAward":
 			var s2 = state.seat(e.actor)
 			s2.lifespan = s2.lifespan + e.payload["amount"]
-			state.phase = PH_FINAL
+		&"MandateResolved":
+			if e.payload["success"] and e.payload["reward"] > 0:
+				var s4 = state.seat(e.actor)
+				s4.lifespan = s4.lifespan + e.payload["reward"]
+				t.mandate_reward[e.actor] = e.payload["reward"]
 		&"PerfectEval":
 			t.perfect_eval = PE_EXECUTED if e.payload["executed"] else PE_SKIPPED
 			t.perfect_success = bool(e.payload.get("success", false))
@@ -336,7 +357,7 @@ func reduce(state, e) -> void:
 
 # ————————————————————————————————— 自动推进 —————————————————————————————————
 
-func advance(state, rng) -> Array:
+func advance(state, rng, facts = null) -> Array:
 	if state.ended:
 		return []
 	var t = state.tpl
@@ -377,6 +398,10 @@ func advance(state, rng) -> Array:
 			]
 		PH_RESOLVE:
 			return _resolve(state, rng)
+		PH_FINAL:
+			# 密令求值必须在承担奖已提交之后进行：M-10【活得最少】读的是
+			# 发奖后的余命。故终局拆成两个 advance 步，中间隔一次 commit。
+			return _finish(state, rng, facts)
 	return []
 
 
@@ -503,9 +528,9 @@ func _settle(state, rng, alive: Array, rejects: int) -> Array:
 	# 第 3 步：终局或下一关卡轮次
 	var alive_after := alive.size() - eliminated.size()
 	if alive_after <= config.early_end_alive:
-		out += _final(state, rng, END_EARLY, alive, eliminated)
+		out += _enter_final(state, END_EARLY, alive, eliminated)
 	elif state.round >= config.rounds:
-		out += _final(state, rng, END_COMPLETED, alive, eliminated)
+		out += _enter_final(state, END_COMPLETED, alive, eliminated)
 	else:
 		out += _begin_round_deferred(state, eliminated)
 	return out
@@ -554,13 +579,16 @@ func _begin_round_deferred(state, eliminated: Array) -> Array:
 	return out
 
 
-func _final(state, rng, end_reason: StringName, alive_before: Array, eliminated: Array) -> Array:
+## 终局第一步：宣告终局原因并发放最终承担奖。
+func _enter_final(state, end_reason: StringName, alive_before: Array, eliminated: Array) -> Array:
 	var t = state.tpl
-	var out: Array = []
 	var survivors: Array = []
 	for s in alive_before:
 		if not eliminated.has(s):
 			survivors.append(s)
+	var out: Array = [Ev.make(&"FinalSettleStarted", Ev.NO_ACTOR, {
+		"end_reason": String(end_reason), "survivors": survivors.size(),
+	})]
 
 	# 最终承担奖：失守者不能获奖，名次顺延
 	survivors.sort_custom(func(a, b):
@@ -578,6 +606,46 @@ func _final(state, rng, end_reason: StringName, alive_before: Array, eliminated:
 		out.append(Ev.make(&"FinalAward", survivors[i], {
 			"rank": i + 1, "amount": awards[i], "burden": t.burden[survivors[i]],
 		}))
+	return out
+
+
+## 终局第二步：密令求值 → 完美判定 → 门环留档 → 终局。
+## 这一步在承担奖已提交之后运行，因此密令能读到发奖后的余命。
+func _finish(state, rng, facts) -> Array:
+	var t = state.tpl
+	var end_reason: StringName = t.pending_end_reason
+	var survivors: Array = state.alive_seats()
+	survivors.sort()
+	var out: Array = []
+
+	# 密令奖：局末一次性求值，只读规则事件流，每条判定引用具体事件序号
+	if facts != null:
+		var assignments: Array = []
+		var mkeys: Array = t.mandates.keys()
+		mkeys.sort()
+		for seat_id in mkeys:
+			assignments.append({
+				"seat": seat_id,
+				"mandate_id": t.mandates[seat_id]["mandate_id"],
+				"target": t.mandates[seat_id]["target"],
+			})
+		var pool_index: Dictionary = Dealer.index(Mandates.pool())
+		var alive_set := {}
+		for s in survivors:
+			alive_set[s] = true
+		for r in Evaluator.resolve(facts, assignments, pool_index, MandateChecks.new()):
+			# 失守者不能获奖（docs/12）。判定结果仍然入档，只是不发放：
+			# 记录与发放分开，历史档案才完整。
+			var paid: bool = alive_set.has(r["seat"])
+			out.append(Ev.make(&"MandateResolved", r["seat"], {
+				"mandate_id": r["mandate_id"], "name": r["name"],
+				"difficulty": r["difficulty"], "target": r["target"],
+				"success": r["success"],
+				"reward": r["reward"] if paid else 0,
+				"forfeited": r["success"] and not paid,
+				"evidence": r["evidence"],
+				"requires_cooperation": r["requires_cooperation"],
+			}, Ev.VIS_ACTOR))
 
 	# 完美判定：仅「六轮打完且所有入场玩家仍存活」时执行
 	var all_alive: bool = survivors.size() == state.seats.size()

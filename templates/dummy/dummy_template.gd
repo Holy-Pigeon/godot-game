@@ -1,4 +1,4 @@
-class_name DummyTemplate
+﻿class_name DummyTemplate
 extends "res://core/template/level_template.gd"
 
 ## T-DUMMY 玩具模板：2 人、1 轮、投票即结束。
@@ -47,7 +47,7 @@ func initial_state(_seats: Array) -> RefCounted:
 	return DummyState.new()
 
 
-func begin(_state, _rng) -> Array:
+func begin(_state, _rng, _facts = null) -> Array:
 	return [Ev.make(&"MatchStarted", Ev.NO_ACTOR, {"template": String(id())})]
 
 
@@ -61,7 +61,7 @@ func validate(state, cmd) -> ValidationResult:
 	return VR.accept()
 
 
-func emit(_state, cmd, _rng) -> Array:
+func emit(_state, cmd, _rng, _facts = null) -> Array:
 	return [Ev.make(&"VoteLocked", cmd.actor, {"approve": bool(cmd.arg("approve", true))})]
 
 
@@ -81,7 +81,7 @@ func reduce(state, e) -> void:
 			state.phase = PH_ENDED
 
 
-func advance(state, _rng) -> Array:
+func advance(state, _rng, _facts = null) -> Array:
 	if state.ended:
 		return []
 	match state.phase:

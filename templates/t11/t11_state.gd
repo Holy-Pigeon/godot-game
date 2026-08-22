@@ -28,6 +28,9 @@ var settled_count: Dictionary = {}   ## seat -> 累计结算灾痕枚数
 var total_loss: Dictionary = {}      ## seat -> 累计实际被扣余命（完美通关返还用）
 var joint_rounds: int = 0            ## K
 var ring: int = 0
+var mandates: Dictionary = {}        ## seat -> {mandate_id, target}
+var mandate_reward: Dictionary = {}  ## seat -> 实际发放的密令奖
+var pending_end_reason: StringName = &""
 var end_reason: StringName = &""
 var perfect_eval: StringName = &""
 var perfect_success: bool = false
@@ -102,9 +105,15 @@ func canonical() -> String:
 	var ds := PackedStringArray()
 	for d in disasters:
 		ds.append("d%d:h=%d,m=%d" % [d["id"], d["holder"], 1 if d["moved"] else 0])
-	return "D[%s] vr=%d vt=%d K=%d ring=%d burden{%s} settled{%s} loss{%s} lamps{%s} votes{%s} end=%s pe=%s/%d" % [
+	var ms := PackedStringArray()
+	var mkeys := mandates.keys()
+	mkeys.sort()
+	for k in mkeys:
+		ms.append("%s=%s>%s" % [str(k), mandates[k]["mandate_id"], str(mandates[k]["target"])])
+	return "D[%s] vr=%d vt=%d K=%d ring=%d burden{%s} settled{%s} loss{%s} lamps{%s} votes{%s} M[%s] MR{%s} end=%s pe=%s/%d" % [
 		";".join(ds), vetoes_this_round, veto_total, joint_rounds, ring,
 		_canon_dict(burden), _canon_dict(settled_count), _canon_dict(total_loss),
 		_canon_dict(lamps), _canon_dict(votes),
+		";".join(ms), _canon_dict(mandate_reward),
 		String(end_reason), String(perfect_eval), 1 if perfect_success else 0,
 	]

@@ -27,7 +27,7 @@ func initial_state(_seats: Array) -> RefCounted:
 
 
 ## 开局事件（含需要 rng 的抽取，结果写进载荷）
-func begin(_state, _rng) -> Array:
+func begin(_state, _rng, _facts = null) -> Array:
 	return []
 
 
@@ -35,8 +35,9 @@ func validate(_state, _cmd) -> ValidationResult:
 	return ValidationResultCls.reject("template does not accept commands")
 
 
-## 命令通过校验后产出的事实
-func emit(_state, _cmd, _rng) -> Array:
+## 命令通过校验后产出的事实。
+## facts 是对规则事件流的只读投影，供密令与（将来的）回响激活判定使用。
+func emit(_state, _cmd, _rng, _facts = null) -> Array:
 	return []
 
 
@@ -46,7 +47,7 @@ func reduce(_state, _event) -> void:
 
 
 ## 自动推进：返回空数组表示当前需要等待命令
-func advance(_state, _rng) -> Array:
+func advance(_state, _rng, _facts = null) -> Array:
 	return []
 
 
