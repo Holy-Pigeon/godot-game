@@ -1,3 +1,6 @@
-# Godot 4+ specific ignores
-.godot/
-/android/
+node_modules/
+dist/
+.vite/
+
+# 微信开发者工具本地产物
+project.private.config.json
