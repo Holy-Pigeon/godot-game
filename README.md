@@ -6,7 +6,7 @@
 
 | 主题 | 文档 |
 |---|---|
-| 高概念、术语与边界 | [00 高概念](docs/00-overview.md) |
+| 高概念、**术语表**与边界 | [00 高概念](docs/00-overview.md) |
 | 一局、十日轮回与三轴 | [01 核心循环](docs/01-core-loop.md) |
 | 余命与记忆 | [02 经济](docs/02-economy-lifespan-memory.md) |
 | 私密目标与分配 | [03 密令](docs/03-mandate.md) |

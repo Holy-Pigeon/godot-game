@@ -8,6 +8,7 @@
 
 | 目的 | 阅读顺序 |
 |---|---|
+| 查某个词是什么意思 | [00 术语](00-overview.md#术语)；T-11 专属词见 [12 本关术语](12-t11-last-proposal.md#本关术语) |
 | 了解游戏 | [00](00-overview.md) → [01](01-core-loop.md) → [11](11-mvp-echoes.md) |
 | 设计回响 | [04](04-echo.md) → [14](14-fragments-and-yearning.md) → [13](13-record-and-inference.md) → [07](07-level-design.md) → [10](10-gm-and-validation.md) |
 | 运行 T-11 MVP | [12 最后提案](12-t11-last-proposal.md) → [11 MVP 回响](11-mvp-echoes.md) |
