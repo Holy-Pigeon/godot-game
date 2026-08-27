@@ -1,0 +1,58 @@
+# 终焉之地 · Nginx 反代（CLAUDE.md 4.6：由 Nginx 负责 TLS 与 WebSocket 升级）
+#
+# 前端是纯静态产物（npm run build → dist/client），权威端是 8787 上的 Node 进程。
+# 客户端在非 5173 端口时连同源的 /ws，因此这里把 /ws 反代到权威端。
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name 你的域名;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name 你的域名;
+
+    ssl_certificate     /etc/letsencrypt/live/你的域名/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/你的域名/privkey.pem;
+
+    # 前端静态产物
+    root /srv/terminus/dist/client;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 带哈希的资源可长缓存；index.html 不缓存，否则改版后客户端拿不到新代码
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # WebSocket 升级到权威端
+    location /ws {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 一局 25–35 分钟，且自由交流阶段可能长时间无报文，
+        # 超时必须显著大于阶段时长，否则真人局会被反代掐断
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location /health {
+        proxy_pass http://127.0.0.1:8787/health;
+    }
+}

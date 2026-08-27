@@ -1,0 +1,12 @@
+{
+  "name": "@terminus/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@terminus/kernel": "*",
+    "@terminus/protocol": "*",
+    "@terminus/templates": "*",
+    "phaser": "^4.2.1"
+  }
+}

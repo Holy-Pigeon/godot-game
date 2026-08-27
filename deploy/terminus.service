@@ -1,0 +1,39 @@
+# 终焉之地权威端（CLAUDE.md 4.6：Node 进程 + Nginx 反代）
+#
+#   sudo cp deploy/terminus.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now terminus
+#
+# 首次部署先建表：MIGRATE=1 node packages/server/src/main.ts
+
+[Unit]
+Description=终焉之地 T-11 权威端
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=terminus
+WorkingDirectory=/srv/terminus
+# Node 26 原生执行 .ts，不需要构建步骤（CLAUDE.md 4.0）
+ExecStart=/usr/bin/node packages/server/src/main.ts
+Restart=always
+RestartSec=3
+
+Environment=NODE_ENV=production
+Environment=PORT=8787
+Environment=SEAT_COUNT=6
+Environment=LIFESPAN=30
+# 连接串不硬编码，放在这个文件里（chmod 600）
+EnvironmentFile=/etc/terminus/env
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=terminus
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/terminus
+
+[Install]
+WantedBy=multi-user.target
